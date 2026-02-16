@@ -267,54 +267,75 @@ def match_names(name_a: str, name_b: str):
     soundex_a = {soundex_token(t) for t in phon_a.split() if t}
     soundex_b = {soundex_token(t) for t in phon_b.split() if t}
     soundex_overlap = soundex_a & soundex_b
+    longest_block = max((b.size for b in seq_matcher.get_matching_blocks()), default=0)
+    token_overlap = len(tokens_a & tokens_b)
+    token_union = len(tokens_a | tokens_b) or 1
+    soundex_union = len(soundex_a | soundex_b) or 1
 
     rows = [
         {
             "Algorithm": "Levenshtein similarity (character edits needed to convert one name into another)",
             "Weight (%)": 20,
             "Confidence (%)": round(lev * 100, 2),
-            "How Matched (This Case)": (
-                f"{lev_dist} edits over max length {max_len}; fewer edits means better match."
+            "Detailed Matching Explanation (This Case)": (
+                f"Both inputs are first normalized to remove titles/special characters and spacing variation, "
+                f"then compared as '{clean_a}' vs '{clean_b}'. Levenshtein counts the minimum single-character "
+                f"operations (insert, delete, replace) needed to convert one normalized name into the other. "
+                f"For this pair, the minimum edit count is {lev_dist}. The similarity is computed as "
+                f"1 - ({lev_dist} / {max_len}) = {round(lev, 4)}."
             ),
         },
         {
             "Algorithm": "Damerau-Levenshtein similarity (character edits + adjacent letter swap handling)",
             "Weight (%)": 20,
             "Confidence (%)": round(dam * 100, 2),
-            "How Matched (This Case)": (
-                f"{dam_dist} edits including transposition handling (e.g., adjacent letter swaps)."
+            "Detailed Matching Explanation (This Case)": (
+                f"This method extends basic edit distance by also treating adjacent transpositions as one operation "
+                f"(for example, 'raeksh' vs 'rakesh'). After normalization, '{clean_a}' and '{clean_b}' require "
+                f"{dam_dist} operations with transposition support. The score is calculated as "
+                f"1 - ({dam_dist} / {max_len}) = {round(dam, 4)}."
             ),
         },
         {
             "Algorithm": "Jaro-Winkler similarity (stronger boost for same starting characters)",
             "Weight (%)": 22,
             "Confidence (%)": round(jaro * 100, 2),
-            "How Matched (This Case)": (
-                f"Common prefix length used for boost: {prefix_len} (max 4)."
+            "Detailed Matching Explanation (This Case)": (
+                f"Jaro-Winkler focuses on matching characters that appear in nearby positions and then applies an "
+                f"extra boost when the beginning of both names matches. For this pair, the common prefix used for "
+                f"Winkler boost is {prefix_len} character(s) out of maximum 4. This helps cases where first-name "
+                f"starts are aligned but internal spelling differs."
             ),
         },
         {
             "Algorithm": "SequenceMatcher ratio (longest common character sequence overlap)",
             "Weight (%)": 20,
             "Confidence (%)": round(seq * 100, 2),
-            "How Matched (This Case)": (
-                f"Longest aligned block length: {max((b.size for b in seq_matcher.get_matching_blocks()), default=0)}."
+            "Detailed Matching Explanation (This Case)": (
+                f"SequenceMatcher finds matching character blocks while preserving order and gives a global ratio. "
+                f"For '{clean_a}' vs '{clean_b}', the longest aligned block length is {longest_block}. This method "
+                f"captures overall ordered overlap even when some characters differ between the two names."
             ),
         },
         {
             "Algorithm": "Token sort ratio (word-level similarity after sorting name tokens)",
             "Weight (%)": 12,
             "Confidence (%)": round(tsr * 100, 2),
-            "How Matched (This Case)": (
-                f"Sorted tokens compared as '{sa}' vs '{sb}'; overlap words: {len(tokens_a & tokens_b)}."
+            "Detailed Matching Explanation (This Case)": (
+                f"Names are split into words, sorted alphabetically, and then compared. This reduces penalty when "
+                f"word order is swapped (e.g., surname-first formats). In this case, sorted forms are '{sa}' and "
+                f"'{sb}'. Exact token overlap is {token_overlap}/{token_union}."
             ),
         },
         {
             "Algorithm": "Soundex phonetic overlap (similar pronunciation mapping)",
             "Weight (%)": 6,
             "Confidence (%)": round(pho * 100, 2),
-            "How Matched (This Case)": (
-                f"Soundex overlap {len(soundex_overlap)}/{len(soundex_a | soundex_b) or 1}: {sorted(soundex_overlap)}."
+            "Detailed Matching Explanation (This Case)": (
+                f"Each token is converted to a Soundex-like phonetic code so similar pronunciations (such as "
+                f"'shaikh'/'sheikh') can still align. For this pair, phonetic token sets are "
+                f"{sorted(soundex_a)} vs {sorted(soundex_b)} with overlap {len(soundex_overlap)}/{soundex_union}: "
+                f"{sorted(soundex_overlap)}."
             ),
         },
     ]
