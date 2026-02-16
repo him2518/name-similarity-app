@@ -243,45 +243,79 @@ def match_names(name_a: str, name_b: str):
     phon_a = phonetic_normalize(name_a)
     phon_b = phonetic_normalize(name_b)
 
-    lev = similarity_from_distance(levenshtein_distance(clean_a, clean_b), clean_a, clean_b)
-    dam = similarity_from_distance(
-        damerau_levenshtein_distance(clean_a, clean_b), clean_a, clean_b
-    )
-    seq = SequenceMatcher(None, clean_a, clean_b).ratio()
+    lev_dist = levenshtein_distance(clean_a, clean_b)
+    dam_dist = damerau_levenshtein_distance(clean_a, clean_b)
+    lev = similarity_from_distance(lev_dist, clean_a, clean_b)
+    dam = similarity_from_distance(dam_dist, clean_a, clean_b)
+    seq_matcher = SequenceMatcher(None, clean_a, clean_b)
+    seq = seq_matcher.ratio()
     jaro = jaro_winkler_similarity(clean_a, clean_b)
     tsr = token_sort_ratio(clean_a, clean_b)
     pho = phonetic_score(phon_a, phon_b)
+    max_len = max(len(clean_a), len(clean_b), 1)
+    prefix_len = 0
+    for ca, cb in zip(clean_a, clean_b):
+        if ca == cb and prefix_len < 4:
+            prefix_len += 1
+        else:
+            break
+
+    sa = " ".join(sorted(clean_a.split()))
+    sb = " ".join(sorted(clean_b.split()))
+    tokens_a = set(clean_a.split())
+    tokens_b = set(clean_b.split())
+    soundex_a = {soundex_token(t) for t in phon_a.split() if t}
+    soundex_b = {soundex_token(t) for t in phon_b.split() if t}
+    soundex_overlap = soundex_a & soundex_b
 
     rows = [
         {
             "Algorithm": "Levenshtein similarity (character edits needed to convert one name into another)",
             "Weight (%)": 20,
             "Confidence (%)": round(lev * 100, 2),
+            "How Matched (This Case)": (
+                f"{lev_dist} edits over max length {max_len}; fewer edits means better match."
+            ),
         },
         {
             "Algorithm": "Damerau-Levenshtein similarity (character edits + adjacent letter swap handling)",
             "Weight (%)": 20,
             "Confidence (%)": round(dam * 100, 2),
+            "How Matched (This Case)": (
+                f"{dam_dist} edits including transposition handling (e.g., adjacent letter swaps)."
+            ),
         },
         {
             "Algorithm": "Jaro-Winkler similarity (stronger boost for same starting characters)",
             "Weight (%)": 22,
             "Confidence (%)": round(jaro * 100, 2),
+            "How Matched (This Case)": (
+                f"Common prefix length used for boost: {prefix_len} (max 4)."
+            ),
         },
         {
             "Algorithm": "SequenceMatcher ratio (longest common character sequence overlap)",
             "Weight (%)": 20,
             "Confidence (%)": round(seq * 100, 2),
+            "How Matched (This Case)": (
+                f"Longest aligned block length: {max((b.size for b in seq_matcher.get_matching_blocks()), default=0)}."
+            ),
         },
         {
             "Algorithm": "Token sort ratio (word-level similarity after sorting name tokens)",
             "Weight (%)": 12,
             "Confidence (%)": round(tsr * 100, 2),
+            "How Matched (This Case)": (
+                f"Sorted tokens compared as '{sa}' vs '{sb}'; overlap words: {len(tokens_a & tokens_b)}."
+            ),
         },
         {
             "Algorithm": "Soundex phonetic overlap (similar pronunciation mapping)",
             "Weight (%)": 6,
             "Confidence (%)": round(pho * 100, 2),
+            "How Matched (This Case)": (
+                f"Soundex overlap {len(soundex_overlap)}/{len(soundex_a | soundex_b) or 1}: {sorted(soundex_overlap)}."
+            ),
         },
     ]
 
