@@ -2,6 +2,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
+import pandas as pd
 import streamlit as st
 
 
@@ -225,16 +226,6 @@ def phonetic_score(a: str, b: str) -> float:
     return len(aset & bset) / len(aset | bset)
 
 
-def token_jaccard(a: str, b: str) -> float:
-    aset = set(a.split())
-    bset = set(b.split())
-    if not aset and not bset:
-        return 1.0
-    if not aset or not bset:
-        return 0.0
-    return len(aset & bset) / len(aset | bset)
-
-
 def token_sort_ratio(a: str, b: str) -> float:
     sa = " ".join(sorted(a.split()))
     sb = " ".join(sorted(b.split()))
@@ -258,29 +249,47 @@ def match_names(name_a: str, name_b: str):
     )
     seq = SequenceMatcher(None, clean_a, clean_b).ratio()
     jaro = jaro_winkler_similarity(clean_a, clean_b)
-    tok = token_jaccard(clean_a, clean_b)
     tsr = token_sort_ratio(clean_a, clean_b)
     pho = phonetic_score(phon_a, phon_b)
-    exact = 1.0 if clean_a == clean_b and clean_a else 0.0
 
     rows = [
-        {"Algorithm": "Exact normalized match", "Confidence (%)": round(exact * 100, 2)},
-        {"Algorithm": "Levenshtein similarity", "Confidence (%)": round(lev * 100, 2)},
-        {"Algorithm": "Damerau-Levenshtein similarity", "Confidence (%)": round(dam * 100, 2)},
-        {"Algorithm": "Jaro-Winkler similarity", "Confidence (%)": round(jaro * 100, 2)},
-        {"Algorithm": "SequenceMatcher ratio", "Confidence (%)": round(seq * 100, 2)},
-        {"Algorithm": "Token Jaccard overlap", "Confidence (%)": round(tok * 100, 2)},
-        {"Algorithm": "Token sort ratio", "Confidence (%)": round(tsr * 100, 2)},
-        {"Algorithm": "Soundex phonetic overlap", "Confidence (%)": round(pho * 100, 2)},
+        {
+            "Algorithm": "Levenshtein similarity (character edits needed to convert one name into another)",
+            "Weight (%)": 20,
+            "Confidence (%)": round(lev * 100, 2),
+        },
+        {
+            "Algorithm": "Damerau-Levenshtein similarity (character edits + adjacent letter swap handling)",
+            "Weight (%)": 20,
+            "Confidence (%)": round(dam * 100, 2),
+        },
+        {
+            "Algorithm": "Jaro-Winkler similarity (stronger boost for same starting characters)",
+            "Weight (%)": 22,
+            "Confidence (%)": round(jaro * 100, 2),
+        },
+        {
+            "Algorithm": "SequenceMatcher ratio (longest common character sequence overlap)",
+            "Weight (%)": 20,
+            "Confidence (%)": round(seq * 100, 2),
+        },
+        {
+            "Algorithm": "Token sort ratio (word-level similarity after sorting name tokens)",
+            "Weight (%)": 12,
+            "Confidence (%)": round(tsr * 100, 2),
+        },
+        {
+            "Algorithm": "Soundex phonetic overlap (similar pronunciation mapping)",
+            "Weight (%)": 6,
+            "Confidence (%)": round(pho * 100, 2),
+        },
     ]
 
     weighted_score = (
-        (0.02 * exact)
-        + (0.16 * lev)
-        + (0.16 * dam)
-        + (0.18 * jaro)
-        + (0.16 * seq)
-        + (0.14 * tok)
+        (0.20 * lev)
+        + (0.20 * dam)
+        + (0.22 * jaro)
+        + (0.20 * seq)
         + (0.12 * tsr)
         + (0.06 * pho)
     ) * 100
@@ -305,6 +314,14 @@ def verdict(score: float) -> str:
     if score >= 50:
         return "Low Match (Likely mismatch)"
     return "Very Low Match (Reject likely)"
+
+
+def confidence_cell_style(value: float) -> str:
+    if value >= 85:
+        return "background-color: #d1fae5; color: #065f46; font-weight: 600;"
+    if value >= 65:
+        return "background-color: #fef3c7; color: #92400e; font-weight: 600;"
+    return "background-color: #fee2e2; color: #991b1b; font-weight: 600;"
 
 
 st.title("Name Similarity & Confidence Engine (India)")
@@ -342,7 +359,11 @@ if compare:
             st.write(f"Input 2 phonetic: `{result['phon_b']}`")
 
         st.subheader("Algorithm-Wise Confidence")
-        st.dataframe(result["rows"], use_container_width=True, hide_index=True)
+        result_df = pd.DataFrame(result["rows"])
+        styled_df = result_df.style.map(confidence_cell_style, subset=["Confidence (%)"])
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        st.caption("Color code: green = high confidence, yellow = moderate confidence, red = low confidence.")
+        st.caption("Overall score is the weighted sum of the algorithm confidences shown above.")
 
         st.caption(
             "Tip: for financial KYC, combine this score with DOB/ID matching to reduce false approvals."
