@@ -1,11 +1,37 @@
-# Name Similarity App (India)
+# Name Similarity App
 
-Compares two names using multiple algorithms and returns algorithm-wise confidence and an overall weighted score.
+Name comparison engine with Streamlit UI and FastAPI endpoint.
 
-## Run
+## Streamlit UI
 
 ```bash
-cd name-similarity-app
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+## API
+
+```bash
+pip install -r requirements.txt
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### API request
+
+`POST /match`
+
+```json
+{
+  "name_1": "Mohammad Faizan Shaikh",
+  "name_2": "Mohd Faizan Sheikh"
+}
+```
+
+### API response
+
+Returns JSON with:
+- all algorithms with their score
+- average score
+- weighted score
+- normalization details
+- decision hint
