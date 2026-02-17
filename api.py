@@ -12,6 +12,16 @@ class MatchRequest(BaseModel):
     name_2: str = Field(..., min_length=1)
 
 
+@app.get("/")
+def root():
+    return {
+        "message": "Name Similarity API is running",
+        "docs": "/docs",
+        "health": "/health",
+        "match_endpoint": "/match",
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
